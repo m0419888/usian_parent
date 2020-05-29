@@ -4,8 +4,10 @@ import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.usian.mapper.*;
 import com.usian.pojo.*;
+import com.usian.redis.RedisClient;
 import com.usian.utils.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,11 @@ public class ItemServiceImpl implements ItemService {
 	@Autowired
 	private TbItemParamItemMapper tbItemParamItemMapper;
 
+	@Autowired
+	private RedisClient redisClient;
+
+	@Value("${PROTAL_CATRESULT_KEY}")
+	private String PROTAL_CATRESULT_KEY;
 
 	@Override
 	public TbItem selectItemInfo(Long itemId) {
@@ -214,9 +221,20 @@ public class ItemServiceImpl implements ItemService {
 
 	@Override
 	public CatResult selectItemCategoryAll() {
+		//先查询Redis
+		CatResult catResultRedis = (CatResult) redisClient.get(PROTAL_CATRESULT_KEY);
+		if (catResultRedis!=null){
+			//如果有数据，直接返回
+			return catResultRedis;
+		}
+
+		//如果没有查数据库，并放到Redis中
 		List<?> list = getCatList(0L);
 		CatResult catResult = new CatResult();
 		catResult.setData(list);
+
+		redisClient.set(PROTAL_CATRESULT_KEY,catResult);
+
 		return catResult;
 	}
 

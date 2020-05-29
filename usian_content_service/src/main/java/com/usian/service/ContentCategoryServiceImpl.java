@@ -8,6 +8,7 @@ import com.usian.pojo.TbContent;
 import com.usian.pojo.TbContentCategory;
 import com.usian.pojo.TbContentCategoryExample;
 import com.usian.pojo.TbContentExample;
+import com.usian.redis.RedisClient;
 import com.usian.utils.AdNode;
 import com.usian.utils.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,12 @@ public class ContentCategoryServiceImpl implements ContentCategoryService {
 
     @Autowired
     private TbContentMapper tbContentMapper;
+
+    @Value("${PORTAL_AD_KEY}")
+    private String PORTAL_AD_KEY;
+
+    @Autowired
+    private RedisClient redisClient;
 
     @Override
     public List<TbContentCategory> selectContentCategoryByParentId(Long id) {
@@ -134,16 +141,27 @@ public class ContentCategoryServiceImpl implements ContentCategoryService {
         tbContent.setCreated(date);
         tbContent.setUpdated(date);
         Integer num = tbContentMapper.insert(tbContent);
+
+        //缓存同步
+        redisClient.hdel(PORTAL_AD_KEY,AD_CATEGORY_ID.toString());
         return num;
     }
 
     @Override
     public Integer deleteContentByIds(Long ids) {
+        redisClient.hdel(PORTAL_AD_KEY,AD_CATEGORY_ID.toString());
         return tbContentMapper.deleteByPrimaryKey(ids);
     }
 
     @Override
     public List<AdNode> selectFrontendContentByAD() {
+        //查询缓存
+        List<AdNode> adNodeListRedis = (List<AdNode>)redisClient.hget(PORTAL_AD_KEY,AD_CATEGORY_ID.toString());
+        if(adNodeListRedis!=null){
+            return adNodeListRedis;
+        }
+
+        //查询数据库
         TbContentExample tbContentExample = new TbContentExample();
         TbContentExample.Criteria criteria = tbContentExample.createCriteria();
         criteria.andCategoryIdEqualTo(AD_CATEGORY_ID);
@@ -160,6 +178,10 @@ public class ContentCategoryServiceImpl implements ContentCategoryService {
             adNode.setWidthB(AD_WIDTHB);
             list.add(adNode);
         }
+
+        //添加到缓存
+        redisClient.hset(PORTAL_AD_KEY,AD_CATEGORY_ID.toString(),list);
+
         return list;
     }
 }
