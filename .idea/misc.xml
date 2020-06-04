@@ -5,6 +5,9 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/pom.xml" />
+        <option value="$PROJECT_DIR$/usian_search_service/pom.xml" />
+        <option value="$PROJECT_DIR$/usian_search_web/pom.xml" />
+        <option value="$PROJECT_DIR$/usian_search_feign/pom.xml" />
       </list>
     </option>
   </component>
