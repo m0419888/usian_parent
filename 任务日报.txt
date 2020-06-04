@@ -1,0 +1,646 @@
+2020-06-01：
+    1、使用redis缓存首页信息
+        一、缓存商品分类菜单：
+        a、修改application.yml：
+            spring:
+              redis:
+                cluster:
+                  nodes:
+                    - 192.168.2.15:7001
+                    - 192.168.2.15:7002
+                    - 192.168.2.15:7003
+                    - 192.168.2.15:7004
+                    - 192.168.2.15:7005
+                    - 192.168.2.15:7006
+                jedis:
+                  pool:
+                    max-active: 20 #连接池最大连接数
+                    max-idle: 10 #连接池中的最大空闲连接
+                    min-idle: 5 # 连接池中的最小空闲连接
+            #配置缓存首页商品分类的 key
+            portal_catresult_redis_key: portal_catresult_redis_key
+
+        b、修改ItemCategoryServiceImpl
+             @Autowired
+             private RedisClient redisClient;
+             @Value("${portal_catresult_redis_key}")
+             private String portal_catresult_redis_key;
+              /**
+                  * 查询首页商品分类
+                  * @return
+                  */
+                 @Override
+                 public CatResult selectItemCategoryAll() {
+                     //查询缓存
+                     CatResult catResultRedis = (CatResult)redisClient.get(portal_catresult_redis_key);
+                     if(catResultRedis!=null){
+                         return catResultRedis;
+                     }
+                     CatResult catResult = new CatResult();
+                     //查询商品分类
+                     catResult.setData(getCatList(0L));
+                     //添加到缓存
+                     redisClient.set(portal_catresult_redis_key,catResult);
+                     return catResult;
+                 }
+        二、缓存首页大广告位信息
+                原理等同于缓存商品菜单信息
+        三、缓存同步
+                即在数据发生改变时，要及时更新redis中缓存的数据
+                在增删改的方法中，要删除之前缓存的数据，重新缓存。
+            修改ContentServiceImpl
+              /**
+                 * 根据分类添加内容
+                 * @param tbContent
+                 * @return
+                 */
+                @Override
+                public Integer insertTbContent(TbContent tbContent) {
+                    tbContent.setUpdated(new Date());
+                    tbContent.setCreated(new Date());
+                    Integer num = this.tbContentMapper.insertSelective(tbContent);
+                    //缓存同步
+                    redisClient.hdel(portal_ad_redis_key,AD_CATEGORY_ID.toString());
+                    return num;
+                }
+                /**
+                 * 删除分类内容
+                 * @param id
+                 * @return
+                 */
+                @Override
+                public Integer deleteContentByIds(Long id) {
+                    Integer num = this.tbContentMapper.deleteByPrimaryKey(id);
+                    //缓存同步
+                    redisClient.hdel(portal_ad_redis_key,AD_CATEGORY_ID.toString());
+                    return num;
+                }
+2020-06-02：
+    ElasticSearch学习：
+        1、为什么要用ElasticSearch？
+        ​ 当我们访问购物网站的时候，我们可以根据我们随意所想的内容输入关键字就可以查询出相关的内容，这是怎么做到呢？
+        这些随意的数据不可能是根据数据库的字段查询的，那是怎么查询出来的呢，为什么千奇百怪的关键字都可以查询出来呢？​
+         答案就是全文检索服务，ElasticSearch是一个基于Lucene的全文检索服务器，而lucene采用了词元匹配方案。
+         举个例子：北京天安门----Lucene切分词：北京  京天  天安  安门  等等这些词元，
+         当我们搜索的时候这些词元都可以检索到北京天安门。
+        2、ElasticSearch介绍
+         ElasticSearch是一个基于Lucene的搜索服务器。它提供了一个基于RESTful web接口的分布式全文搜索引擎。
+         ElasticSearch是用Java语言开发的，并作为Apache许可条款下的开放源码发布，是一种流行的企业级搜索引擎。
+         ElasticSearch用于云计算中，能够达到实时搜索，稳定，可靠，快速，安装使用方便。根据DB-Engines的排名显示，
+         ElasticSearch是最受欢迎的企业搜索引擎，其次是Apache Solr（也是基Lucene）。
+        总结：
+        ​ 1、elasticsearch是一个基于Lucene的分布式全文检索服务器。
+        ​ 2、elasticsearch隐藏了Lucene的复杂性，对外提供Restful 接口来操作索引、搜索。
+        es和solr选择哪个？
+        1.如果你公司现在用的solr可以满足需求就不要换了。
+        2.如果你公司准备进行全文检索项目的开发，建议优先考虑elasticsearch，因为像Github这样大规模的搜索都在用它。
+
+        3、原理与应用
+            3.1、倒排索引
+                倒排索引（Inverted index）:也常被称为反向索引，倒排索引是从关键字到文档的映射（已知关键字求文档）。
+                逻辑结构部分是一个倒排索引表，由三部分组成：
+                1、将搜索的文档最终以 Document 方式存储起来。
+                2、将要搜索的文档内容分词，所有不重复的词组成 分词 列表。
+                3、每个分词和document都有 关联 。
+        4、RESTful应用方法
+            如何使用es？
+            Elasticsearch提供 RESTful Api接口进行索引、搜索，并且支持多种客户端。
+        5、安装 ElasticSearch
+            5.1环境需求
+                1、jdk必须是jdk1.8.0_131以上版本。
+                2、ElasticSearch 需要至少4096 的线程池才能正常启动，ES 至少需要 65536 的文件创建权限，
+                    所以需要为虚拟机分配至少1.5G以上的内存
+                3、从5.0开始，ElasticSearch 安全级别提高了，不允许采用root帐号启动
+                4、Elasticsearch的插件要求至少3.5以上版本
+            5.2、设置虚拟机内存大于1.5G
+            5.3、创建用户
+                1.创建elk 用户组
+                    groupadd elk
+                2.创建用户admin
+                    useradd admin
+                    passwd admin
+                3.将admin用户添加到elk组
+                     usermod -G elk admin
+                5.为用户分配权限
+                #chown将指定文件的拥有者改为指定的用户或组 -R处理指定目录以及其子目录下的所有文件
+                    chown -R admin:elk /usr/upload
+                    chown -R admin:elk /usr/java
+                切换用户：
+                    su admin
+            5.4、安装
+                ES是Java开发的应用，解压即安装：
+                    tar -zxvf elasticsearch-6.2.3.tar.gz -C /usr/java
+            5.5、ES目录结构
+                bin 目录：可执行文件包
+                config 目录：配置相关目录
+                lib 目录：ES 需要依赖的 jar 包，ES 自开发的 jar 包
+                logs 目录：日志文件相关目录
+                modules 目录：功能模块的存放目录，如aggs、reindex、geoip、xpack、eval
+                plugins 目录：插件目录包，三方插件或自主开发插件
+                data 目录：在 ES 启动后，会自动创建的目录，内部保存 ES 运行过程中需要保存的数据。
+            5.6、elasticsearch.yml配置文件：
+                    cluster.name: usian
+                    node.name: usian_node_1
+                    network.host: 0.0.0.0
+                    http.port: 9200
+                    transport.tcp.port: 9300
+                    node.master: true
+                    node.data: true
+                    discovery.zen.ping.unicast.hosts: ["0.0.0.0:9300", "0.0.0.0:9301"]
+                    bootstrap.memory_lock: false
+                    path.data: /usr/java/elasticsearch-6.2.3/data
+                    path.logs: /usr/java/elasticsearch-6.2.3/logs
+                    http.cors.enabled: true
+                    http.cors.allow-origin: /.*/
+                        常用的配置项如下：
+
+                        cluster.name:
+                               配置elasticsearch的集群名称，默认是elasticsearch。建议修改成一个有意义的名称。
+                        node.name:
+                              节点名，通常一台物理服务器就是一个节点，es会默认随机指定一个名字，建议指定一个有意义的名称，方便管理一个或多个节点组成一个cluster集群，集群是一个逻辑的概念，节点是物理概念，后边章节会详细介绍。
+                        path.data:
+                               设置索引数据的存储路径，默认是es_home下的data文件夹，可以设置多个存储路径，用逗号隔开。
+                        path.logs:
+                               设置日志文件的存储路径，默认是es_home下的logs文件夹
+                        bootstrap.memory_lock: true
+                               设置为true可以锁住ES使用的内存，避免内存与swap分区交换数据。
+                        network.host:
+                               设置绑定主机的ip地址，设置为0.0.0.0表示绑定任何ip，允许外网访问，生产环境建议设置为具体的ip。
+                        http.port: 9200
+                               设置对外服务的http端口，默认为9200。
+                        transport.tcp.port: 9300
+                               集群结点之间通信端口
+                        node.master:
+                               指定该节点是否有资格被选举成为master结点，默认是true，如果原来的master宕机会重新选举新master。
+                        node.data:
+                               指定该节点是否存储索引数据，默认为true。
+                        discovery.zen.ping.unicast.hosts:[“host1:port”, “host2:port”, “…”]
+                               设置集群中master节点的初始列表。
+                        discovery.zen.ping.timeout: 3s
+                               设置ES自动发现节点连接超时的时间，默认为3秒，如果网络延迟高可设置大些。
+                        http.cors.enabled：
+                               是否支持跨域，默认为false
+                        http.cors.allow-origin：
+                               当设置允许跨域，默认为*,表示支持所有域名
+            5.7、jvm.options
+                设置最小及最大的JVM堆内存大小：
+                在jvm.options中设置 -Xms和-Xmx：
+                1） 两个值设置为相等
+                2） 将Xmx 设置为不超过物理内存的一半。
+                默认内存占用太多了，我们调小一些：
+                -Xms512m
+                -Xmx512m
+            5.8、启动和关闭
+                5.8.1、解决内核问题
+                        使用root用户修改配置文件:
+                        修改elasticsearch.yml文件，在最下面添加如下配置：
+                            bootstrap.system_call_filter: false
+                5.8.2、解决文件创建权限问题
+                        Linux 默认来说，一般限制应用最多创建的文件是 4096个。但是 ES 至少需要 65536 的文件创建权限。我们用的是admin用户，而不是root，所以文件权限不足。
+                        使用root用户修改配置文件:
+                            vim /etc/security/limits.conf
+                        添加下面的内容：
+                            * soft nofile 65536
+                            * hard nofile 65536
+                5.8.3、解决线程开启限制问题
+                         默认的 Linux 限制 root 用户开启的进程可以开启任意数量的线程，其他用户开启的进程可以开启1024 个线程。必须修改限制数为4096+。因为 ES 至少需要 4096 的线程池预备。
+                        ​ 如果虚拟机的内存是 1G，最多只能开启 3000+个线程数。至少为虚拟机分配 1.5G 以上的内存。
+                        使用root用户修改配置：
+                            vim /etc/security/limits.d/90-nproc.conf
+                        修改下面的内容：
+                            * soft nproc 1024
+                        改为：
+                            * soft nproc 4096
+                5.8.4、解决虚拟内存问题
+                        ES 需要开辟一个 262144字节以上空间的虚拟内存。Linux 默认不允许任何用户和应用直接开辟虚拟内存。
+                        vim /etc/sysctl.conf
+                        追加下面内容：
+                            vm.max_map_count=655360 #限制一个进程可以拥有的VMA(虚拟内存区域)的数量
+                        然后执行命令，让sysctl.conf配置生效：
+                            sysctl -p
+            5.9、测试：
+                    http://192.168.157.139:9200  # ES相关信息显示
+        6、Kibana
+            1、什么是Kibana
+                 Kibana是ES提供的一个基于Node.js的基于Node.js的管理控制台, 可以很容易实现高级的数据分析和可视化，以图标的形式展现出来。
+                ​ kibana可以用来编辑请求语句的，方便学习操作es的语法。
+                 有时在进行编写程序，写到查询语句时，往往我会使用kibana进行书写，然后再粘贴到程序中。（不容易出错）
+            2、安装
+                在window中安装Kibana很方便，解压即安装
+            3、修改配置：
+                修改config/kibana.yml配置：
+                server.port:5601
+                server.host:"0.0.0.0" #允许来自远程用户的连接
+                elasticsearch.url:http://192.168.157.139:9200 #Elasticsearch实例的URL
+            4、启动
+                ./bin/kibana（或双击bat文件）
+            5、测试：浏览器访问：http://127.0.0.1:5601
+        7、Head
+            1、什么是Head
+                head插件是ES的一个可视化管理插件，用来监视ES的状态，并通过head客户端和ES服务进行交互，
+                比如创建映射、创建索引等。从ES6.0开始，head插件支持使得node.js运行。
+            2、安装
+                a、下载地址：https://github.com/mobz/elasticsearch-head
+                b、安装依赖  在解压以后的根目录中运行cmd窗口：npm install
+                c、运行 npm run start   测试  浏览器访问：http://127.0.0.1:9100/
+        8、ES快速入门
+            1、index管理
+                创建index
+                    索引。包含若干相似结构的 Document 数据，相当于数据库的database。
+                    语法：
+                    PUT /java1906
+                    {
+                      "settings": {
+                        "number_of_shards": 2,
+                        "number_of_replicas": 0
+                      }
+                    }
+                    number_of_shards - 是表示一个索引库将拆分成多片分别存储不同的结点，提高了ES的处理能力和高可用性
+                    number_of_replicas- 是为每个 primary shard分配的replica shard数，如果只有一台机器，设置为0
+                修改index
+                    注意：索引一旦创建，primary shard 数量不可变化，可以改变replica shard 数量。
+                    PUT /java1906/_settings
+                    {
+                      "number_of_replicas" : 1
+                    }
+                    ES 中对 shard 的分布是有要求的，有其内置的特殊算法：
+                    ​ Replica shard 会保证不和他的那个 primary shard 分配在同一个节点上；
+                    如过只有一个节点，则此案例执行后索引的状态一定是yellow。
+            删除index
+                DELETE /java1906 [, other_index]
+        2、mapping管理
+                映射，创建映射就是向索引库中创建field（类型、是否索引、是否存储等特性）的过程，下边是document和field与关系数据库的概念的类比：
+                ​ 索引库（index）--------------------------------Database数据库
+                ​ 类型（type）-----------------------------Table数据表
+                ​ 文档（Document）----------------Row 行
+                ​ 字段（Field）-------------------Columns 列
+                注意：6.0之前的版本有type（类型）概念，type相当于关系数据库的表，ES6.x 版本之后，
+                type概念被弱化ES官方将在ES7.0版本中彻底删除type。
+            创建mapping
+                语法：POST index_name/type_name/_mapping
+                如：
+                    POST /java1906/course/_mapping
+                    {
+                      "properties": {
+                         "name": {
+                            "type": "text"
+                         },
+                         "description": {
+                            "type": "text"
+                         },
+                         "studymodel": {
+                            "type": "keyword"
+                         }
+                      }
+                    }
+            查询mapping
+                查询所有索引的映射：
+                GET /java1906/course/_mapping
+        3、document管理
+            创建document
+                ES中的文档相当于MySQL数据库表中的记录。
+            POST语法
+                此操作为 ES 自动生成 id 的新增 Document 方式。
+                语法：POST/index_name/type_name{fieldname:fieldvalue}
+                如：
+                    POST /java1906/course/1
+                    {
+                      "name":"python从入门到放弃",
+                      "description":"人生苦短，我用Python",
+                      "studymodel":"201002"
+                    }
+                    POST /java1906/course
+                    {
+                      "name":".net从入门到放弃",
+                      "description":".net程序员谁都不服",
+                      "studymodel":"201003"
+                    }
+            PUT语法
+                此操作为手工指定 id 的 Document 新增方式。
+                语法：PUT/index_name/type_name/id{field_name:field_value}
+                如：
+                    PUT /java1906/course/2
+                    {
+                      "name":"php从入门到放弃",
+                      "description":"php是世界上最好的语言",
+                      "studymodel":"201001"
+                    }
+            查询document
+                语法：
+                ​ GET /index_name/type_name/id
+                或
+                ​ GET /index_name/type_name/_search?q=field_name:field_value
+                如：根据课程id查询文档
+                GET /java1906/course/1
+                如：查询所有记录
+                GET /java1906/course/_search
+                如：查询名称中包括php 关键字的的记录
+                GET /java1906/course/_search?q=name:门
+            删除Document
+                 ES 中执行删除操作时，ES先标记Document为deleted状态，而不是直接物理删除。
+                 当ES 存储空间不足或工作空闲时，才会执行物理删除操作，标记为deleted状态的数据不会被查询搜索到
+                 （ES 中删除 index ，也是标记。后续才会执行物理删除。所有的标记动作都是为了NRT（近实时）实现）
+                语法：DELETE/index_name/type_name/id
+                如：
+                DELETE /java1906/course/3
+        ES读写原理
+            documnet routing（数据路由）
+                当客户端创建document的时候，es需要确定这个document放在该index哪个shard上，这个过程就是document routing。
+                路由过程：
+                　　　　路由算法：shard = hash(routing) %number_of_primary_shards
+                　　　　routing：document的_id，可能是手动指定，也可能是自动生成，决定一个document在哪个shard上
+                　　　　number_of_primary_shards：主分片
+        ES document写操作原理
+            ES增删改的处理流程：增删改的请求一定作用在主分片上。
+            假如我们es集群有3个node，每个node上一个主分片一个复制分片,
+                1、第一步 客户端发起一个PUT请求，假如该请求被发送到第一个node节点，那么该节点将成为协调节点
+                   (coordinatingnode)，如图P1所在的节点就是协调节点。他将根据该请求的路由信息计算，该document将被存储到哪个分片。
+                2、第二步 通过计算发现该document被存储到p0分片，那么就将请求转发到node2节点。
+                3、第三步P0根据请求信息创建document，和相应的索引信息，创建完毕后将信息同步到自己的副本节点R0上。
+                4、第四步P0和R0将通知我们的协调节点，任务完成情况。
+                5、第五部 协调节点响应客户端最终的处理结果。
+        ES document读操作原理
+            假如我们es集群有3个node，每个node上一个主分片一个复制分片,
+                1、第一步 客户端发送读器请求到协调节点(coordinate node)。
+                2、第二步 协调节点(coordinate node)根据请求信息对document进行路由计算，将请求转发到对应的node，node2
+                   或者node3，此时会使用round-robin随机轮询算法，在primary shard以及其所有replica(副本)中随机选择一
+                   个让读请求负载均衡。
+                3、第三步 相应接收到请求的节点(node2或者node3)将处理结果返回给协调节点(coordinate node)。
+                4、第四步 协调节点将最终的结果反馈给客户端。
+            为什么primary shard数量不可变？
+                原因：假如我们的集群在初始化的时候有5个primary shard，我们往里边加入一个document id=5，假如hash(5)=23,
+                这时该document 将被加入 (shard=23%5=3)P3这个分片上。如果随后我们给es集群添加一个primary shard ，
+                此时就有6个primary shard，当我们GET id=5 ，这条数据的时候，
+                es会计算该请求的路由信息找到存储他的primary shard（shard=23%6=5） ，
+                根据计算结果定位到P5分片上。而我们的数据在P3上。所以es集群无法添加primary shard，但是可以扩展replicas shard。
+2020-06-03：
+    1、IK分词器
+        下载IK分词器：（Github地址：https://github.com/medcl/elasticsearch-analysis-ik）
+        解压，并将解压的文件拷贝到ES安装目录的plugins下的ik(重命名)目录下，重启es
+            测试分词效果：
+            POST /_analyze
+            {
+              "text":"中华人民共和国人民大会堂",
+              "analyzer":"ik_smart"
+            }
+            ik分词器有两种分词模式：ik_max_word和ik_smart模式。
+            1、ik_max_word
+            ​ 会将文本做最细粒度的拆分，比如会将“中华人民共和国人民大会堂”拆分为“中华人民共和国、
+                中华人民、中华、华人、人民共和国、人民、共和国、大会堂、大会、会堂等词语。
+            2、ik_smart
+            ​ 会做最粗粒度的拆分，比如会将“中华人民共和国人民大会堂”拆分为中华人民共和国、人民大会堂。
+        自定义词库
+            如果要让分词器支持一些专有词语，可以自定义词库。
+            iK分词器自带的main.dic的文件为扩展词典，stopword.dic为停用词典。
+            比如定义：
+            配置文件中配置my.dic，
+    field详细介绍：
+        field的属性介绍:
+            type：
+                通过type属性指定field的类型。
+                "name":{
+                       "type":"text"
+                }
+            analyzer：
+                通过analyzer属性指定分词模式。
+                "name": {
+                        "type": "text",
+                         "analyzer":"ik_max_word"
+                   }
+            上边指定了analyzer是指在索引和搜索都使用ik_max_word，如果单独想定义搜索时使用的分词器则可以通过search_analyzer属性。
+            对于ik分词器建议是索引时使用ik_max_word将搜索内容进行细粒度分词，搜索时使用ik_smart提高搜索精确性。
+        index：
+            通过index属性指定是否<font color=red>索引</font>。默认为index=true，即要进行索引，只有进行索引才可以从索引库搜索到。
+            但是也有一些内容不需要索引，比如：商品图片地址只被用来展示图片，不进行搜索图片，此时可以将index设置为false。
+            删除索引，重新创建映射，将pic的index设置为false，尝试根据pic去搜索，结果搜索不到数据
+            "pic": {
+                   "type":"text",
+                   "index":false
+            }
+        field索引不存储
+            ​ 如果某个字段内容非常多，业务里面只需要能对该字段进行搜索，比如：商品描述。
+            查看文档内容会再次到mysql或者hbase中取数据，把大字段的内容存在Elasticsearch中只会增大索引，
+            这一点文档数量越大结果越明显，如果一条文档节省几KB，放大到亿万级的量结果也是非常可观的。
+            如果只想存储某几个字段的原始值到Elasticsearch，可以通过incudes参数来设置，在mapping中的设置如下:
+            POST /java1906/course/_mapping
+            {
+              "_source": {
+                "includes":["description"]
+              }
+            }
+            同样，可以通过excludes参数排除某些字段：
+            POST /java1906/course/_mapping
+            {
+              "_source": {
+                "excludes":["description"]
+              }
+            }
+    常用field类型
+        text文本字段
+        keyword关键字字段
+            keyword字段为关键字字段，通常搜索keyword是按照整体搜索，所以创建keyword字段  索引时是不进行分词 的，
+            比如：邮政编码、手机号码、身份证等。keyword字段通常用于过虑、排序、聚合等。
+        date日期类型
+            日期类型不用设置分词器，通常日期类型的字段用于排序。
+            1)format通过format设置日期格式，多个格式使用双竖线||分隔, 每个格式都会被依次尝试, 直到找到匹配的
+                    POST /java1906/course/_mapping
+                    {
+                        "properties": {
+                           "timestamp": {
+                             "type":   "date",
+                             "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd"
+                           }
+                         }
+                    }
+        Numeric类型:Integer、double、float等
+    field属性的设置标准：
+        	         设置标准
+        分词	    是否有意义
+        索引	    是否搜索
+        存储	    是否展示
+
+    Spring Boot整合ElasticSearch
+        pom.xml
+                        <dependency>
+                        <groupId>org.elasticsearch.client</groupId>
+                        <artifactId>elasticsearch-rest-high-level-client</artifactId>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.elasticsearch</groupId>
+                        <artifactId>elasticsearch</artifactId>
+                    </dependency>
+        application.yml
+            spring:
+              data:
+                elasticsearch:
+                  cluster-nodes: 192.168.233.134:9200
+        config:
+            @Configuration
+            public class ElasticsearchConfig extends ElasticsearchProperties{
+                @Bean
+                public RestHighLevelClient getRestHighLevelClient() {
+                    String[] hosts = getClusterNodes().split(",");
+                    HttpHost[] httpHosts = new HttpHost[hosts.length];
+                    for (int i = 0; i < httpHosts.length; i++) {
+                        String h = hosts[i];
+                        httpHosts[i] = new HttpHost(h.split(":")[0],Integer.parseInt(h.split(":")[1]));
+                    }
+                    return new RestHighLevelClient(RestClient.builder(httpHosts));
+                }
+            }
+        app
+            @SpringBootApplication
+            public class ElasticsearchApp {
+                public static void main(String[] args) {
+                    SpringApplication.run(ElasticsearchApp.class, args);
+                }
+            }
+        创建索引库:
+            api:
+                POST /java1906/course/_mapping
+                {
+                  "_source": {
+                    "excludes":["description"]
+                  },
+                    "properties": {
+                      "name": {
+                          "type": "text",
+                          "analyzer":"ik_max_word",
+                          "search_analyzer":"ik_smart"
+                      },
+                      "description": {
+                          "type": "text",
+                          "analyzer":"ik_max_word",
+                          "search_analyzer":"ik_smart"
+                       },
+                       "studymodel": {
+                          "type": "keyword"
+                       },
+                       "price": {
+                          "type": "float"
+                       },
+                       "pic":{
+                           "type":"text",
+                           "index":false
+                        },
+                       "timestamp": {
+                            "type":   "date",
+                            "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd"
+                         }
+                  }
+                }
+                @RunWith(SpringJUnit4ClassRunner.class)
+                @SpringBootTest(classes = {ElasticsearchApp.class})
+                public class IndexWriterTest {
+                    @Autowired
+                    private RestHighLevelClient restHighLevelClient;
+                   //创建索引库
+                    @Test
+                    public void testCreateIndex() throws IOException {
+                        //创建“创建索引请求”对象，并设置索引名称
+                        CreateIndexRequest createIndexRequest = new CreateIndexRequest("java1906");
+                        //设置索引参数
+                        createIndexRequest.settings(Settings.builder().put("number_of_shards",1).
+                                                    put("number_of_replicas",0));
+                        createIndexRequest.mapping("course", "将api中代码复制到此", XContentType.JSON);
+                        //创建索引操作客户端
+                        IndicesClient indices = restHighLevelClient.indices();
+                        //创建响应对象
+                        CreateIndexResponse createIndexResponse = indices.create(createIndexRequest);
+                        //得到响应结果
+                        boolean acknowledged = createIndexResponse.isAcknowledged();
+                        System.out.println(acknowledged);
+                    }
+                  }
+            删除索引库：
+                api：DELETE /index_name
+                java client：
+                //删除索引库
+                    @Test
+                    public void testDeleteIndex() throws IOException {
+                        //创建“删除索引请求”对象
+                        DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest("java1906");
+                        //创建索引操作客户端
+                        IndicesClient indices = restHighLevelClient.indices();
+                        //创建响应对象
+                        DeleteIndexResponse deleteIndexResponse =
+                            indices.delete(deleteIndexRequest,RequestOptions.DEFAULT);
+                        //得到响应结果
+                        boolean acknowledged = deleteIndexResponse.isAcknowledged();
+                        System.out.println(acknowledged);
+                    }
+             添加文档
+            	IndexRequest indexRequest = new IndexRequest("java1906", "course", "1");
+            	indexRequest.source();
+            	restHighLevelClient.index(indexRequest,RequestOptions.DEFAULT);
+             批量添加文档
+            	BulkRequest bulkRequest = new BulkRequest();
+            	bulkRequest.add(new IndexRequest("java1906", "course", "1").source(""));
+            	bulkRequest.add(new IndexRequest("java1906", "course", "1").source(""));
+            	restHighLevelClient.bulk(bulkRequest,RequestOptions.DEFAULT);
+            修改文档
+            	UpdateRequest updateRequest = new UpdateRequest("java1906", "course", "1");
+            	indexRequest.doc("");
+            	restHighLevelClient.update(indexRequest,RequestOptions.DEFAULT);
+             删除文档
+            	DeleteRequest deleteRequest = new DeleteRequest("java1906", "course", "1");
+            	restHighLevelClient.delete(deleteRequest,RequestOptions.DEFAULT);
+             简单搜索
+            	GetRequest getRequest = new GetRequest("java1906", "course", "1");
+            	restHighLevelClient.get(getRequest,RequestOptions.DEFAULT);
+             dsl搜索
+            	1、match_all
+            		SearchRequest searchRequest = new SearchRequest("java1906");
+            		searchRequest.types("course");
+                    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                    searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+                    searchRequest.search(searchSourceBuilder)
+                    restHighLevelClient.search(searchRequest,RequestOptions.DEFAULT);
+                 2、分页查询
+                    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                    searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+                    searchSourceBuilder.form(1);
+                    searchSourceBuilder.size(2);
+                    searchSourceBuilder.sort("price",SortOrder.DESC);
+            match查询
+                SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                searchSourceBuilder.query(QueryBuilders.matchQuery("name", "spring开
+                                                                   发").operator(Operator.AND));
+                // 设置搜索源
+                searchRequest.source(searchSourceBuilder);
+                // 执行搜索
+                searchResponse = restHighLevelClient.search(searchRequest,RequestOptions.DEFAULT);
+            multi_match查询
+                SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                searchSourceBuilder.query(QueryBuilders.multiMatchQuery("开发","name","description"));
+                // 设置搜索源
+                searchRequest.source(searchSourceBuilder);
+                // 执行搜索
+                searchResponse = restHighLevelClient.search(searchRequest,RequestOptions.DEFAULT);
+            bool查询
+                布尔查询对应于Lucene的BooleanQuery查询，实现将多个查询组合起来。
+                参数：
+                	must：表示必须，多个查询条件必须都满足。（通常使用must）
+                	should：表示或者，多个查询条件只要有一个满足即可。
+                	must_not：表示非。
+
+                     SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                    //bool
+                    BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+                    //must
+                    boolQueryBuilder.must(QueryBuilders.matchQuery("name", "开发"));
+                    boolQueryBuilder.must(QueryBuilders.matchQuery("description","开发"));
+                    searchSourceBuilder.query(boolQueryBuilder);
+                    searchRequest.source(searchSourceBuilder);
+                    searchResponse = restHighLevelClient.search(searchRequest,RequestOptions.DEFAULT);
+            filter查询
+                过滤查询。此操作实际上就是 query DSL 的补充语法。过滤的时候，不进行任何的匹配分数计算，
+                相对于 query 来说，filter 相对效率较高。Query 要计算搜索匹配相关度分数。Query更加适合复杂的条件搜索。
+
+                    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                    BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+                    boolQueryBuilder.must(QueryBuilders.matchQuery("name","开发"));
+                    boolQueryBuilder.filter(QueryBuilders.rangeQuery("price").gte(10).lte(100))
+                    searchSourceBuilder.query(boolQueryBuilder);
+                    searchRequest.source(searchSourceBuilder);
+                    searchResponse = restHighLevelClient.search(searchRequest,RequestOptions.DEFAULT);
