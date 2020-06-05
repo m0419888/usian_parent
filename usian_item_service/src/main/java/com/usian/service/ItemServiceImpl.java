@@ -6,6 +6,7 @@ import com.usian.mapper.*;
 import com.usian.pojo.*;
 import com.usian.redis.RedisClient;
 import com.usian.utils.*;
+import org.springframework.amqp.core.AmqpTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,9 @@ public class ItemServiceImpl implements ItemService {
 
 	@Autowired
 	private RedisClient redisClient;
+
+	@Autowired
+	private AmqpTemplate amqpTemplate;
 
 	@Value("${PROTAL_CATRESULT_KEY}")
 	private String PROTAL_CATRESULT_KEY;
@@ -112,6 +116,9 @@ public class ItemServiceImpl implements ItemService {
 		tbItemParamItem.setUpdated(date);
 		tbItemParamItem.setCreated(date);
 		Integer itemParamItmeNum = tbItemParamItemMapper.insertSelective(tbItemParamItem);
+
+		//添加商品发布消息到mq
+		amqpTemplate.convertAndSend("item_exchage","item.add", itemId);
 
 		return tbItemNum + tbitemDescNum + itemParamItmeNum;
 	}
