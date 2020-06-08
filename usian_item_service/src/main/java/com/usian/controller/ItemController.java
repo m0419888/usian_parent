@@ -1,9 +1,7 @@
 package com.usian.controller;
 
 import com.github.pagehelper.Page;
-import com.usian.pojo.TbItem;
-import com.usian.pojo.TbItemCat;
-import com.usian.pojo.TbItemParam;
+import com.usian.pojo.*;
 import com.usian.service.ItemService;
 import com.usian.utils.CatNode;
 import com.usian.utils.CatResult;
@@ -97,5 +95,15 @@ public class ItemController {
     public CatResult selectItemCategoryAll(){
         CatResult catResult = itemService.selectItemCategoryAll();
         return catResult;
+    }
+
+    @RequestMapping("/selectItemDescByItemId")
+    public TbItemDesc selectItemDescByItemId(Long itemId){
+        return itemService.selectItemDescByItemId(itemId);
+    }
+
+    @RequestMapping("/selectTbItemParamItemByItemId")
+    public TbItemParamItem selectTbItemParamItemByItemId(Long itemId){
+        return itemService.selectTbItemParamItemByItemId(itemId);
     }
 }

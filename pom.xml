@@ -21,6 +21,7 @@
         <module>usian_content_web</module>
         <module>usian_portal_web</module>
         <module>common_redis</module>
+        <module>usian_detail_web</module>
     </modules>
 
     <!--Spring Boot 父工程-->

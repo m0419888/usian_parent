@@ -1,8 +1,6 @@
 package com.usian.service;
 
-import com.usian.pojo.TbItem;
-import com.usian.pojo.TbItemCat;
-import com.usian.pojo.TbItemParam;
+import com.usian.pojo.*;
 import com.usian.utils.CatNode;
 import com.usian.utils.CatResult;
 import com.usian.utils.ItemAll;
@@ -34,4 +32,8 @@ public interface ItemService {
     Integer deleteItemParamById(Long id);
 
     CatResult selectItemCategoryAll();
+
+    TbItemDesc selectItemDescByItemId(Long itemId);
+
+    TbItemParamItem selectTbItemParamItemByItemId(Long itemId);
 }

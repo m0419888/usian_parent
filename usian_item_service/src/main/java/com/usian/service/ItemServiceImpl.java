@@ -45,9 +45,57 @@ public class ItemServiceImpl implements ItemService {
 	@Value("${PROTAL_CATRESULT_KEY}")
 	private String PROTAL_CATRESULT_KEY;
 
+	@Value("${ITEM_INFO}")
+	private String ITEM_INFO;
+
+	@Value("${BASE}")
+	private String BASE;
+
+	@Value("${DESC}")
+	private String DESC;
+
+	@Value("${PARAM}")
+	private String PARAM;
+
+	@Value("${SETNX_BASC_LOCK_KEY}")
+	private String SETNX_BASC_LOCK_KEY;
+
+	@Value("${SETNX_DESC_LOCK_KEY}")
+	private String SETNX_DESC_LOCK_KEY;
+
+	@Value("${ITEM_INFO_EXPIRE}")
+	private Long ITEM_INFO_EXPIRE;
+
+	@Value("${SETNX_PARAM_LOCK_KEY}")
+	private Long SETNX_PARAM_LOCK_KEY;
+
 	@Override
 	public TbItem selectItemInfo(Long itemId) {
-		return tbItemMapper.selectByPrimaryKey(itemId);
+		//查询缓存
+		TbItem tbItem = (TbItem) redisClient.get(ITEM_INFO + ":" + itemId + ":"+ BASE);
+		if(tbItem!=null){
+			return tbItem;
+		}
+		if (redisClient.setnx(SETNX_BASC_LOCK_KEY+":"+itemId,itemId,30L)){
+			//查询数据库
+			tbItem = tbItemMapper.selectByPrimaryKey(itemId);
+			redisClient.del(SETNX_BASC_LOCK_KEY+":"+itemId);
+			/********************解决缓存穿透************************/
+			if (tbItem!=null){
+				//把数据保存到缓存
+				redisClient.set(ITEM_INFO + ":" + itemId + ":"+ BASE,tbItem);
+				//设置缓存的有效期
+				redisClient.expire(ITEM_INFO + ":" + itemId + ":"+ BASE,ITEM_INFO_EXPIRE);
+				return tbItem;
+			}
+			//把数据保存到缓存
+			redisClient.set(ITEM_INFO + ":" + itemId + ":"+ BASE,null);
+			//设置缓存的有效期
+			redisClient.expire(ITEM_INFO + ":" + itemId + ":"+ BASE,30L);
+		}else {
+			selectItemInfo(itemId);
+		}
+		return null;
 	}
 
 	@Override
@@ -243,6 +291,68 @@ public class ItemServiceImpl implements ItemService {
 		redisClient.set(PROTAL_CATRESULT_KEY,catResult);
 
 		return catResult;
+	}
+
+	@Override
+	public TbItemDesc selectItemDescByItemId(Long itemId) {
+		//查询缓存
+		TbItemDesc tbItemDesc = (TbItemDesc) redisClient.get(ITEM_INFO + ":" + itemId + ":"+ PARAM);
+		if(tbItemDesc!=null){
+			return tbItemDesc;
+		}
+		if (redisClient.setnx(SETNX_DESC_LOCK_KEY+":"+itemId,itemId,30L)){
+			tbItemDesc = tbItemDescMapper.selectByPrimaryKey(itemId);
+			redisClient.del(SETNX_DESC_LOCK_KEY+":"+itemId);
+			if (tbItemDesc!=null){
+				redisClient.set(ITEM_INFO + ":" + itemId + ":" + DESC,tbItemDesc);
+				redisClient.expire(ITEM_INFO + ":" + itemId + ":" + DESC,ITEM_INFO_EXPIRE);
+				return tbItemDesc;
+			}
+			redisClient.set(ITEM_INFO + ":" + itemId + ":" + DESC,null);
+			redisClient.expire(ITEM_INFO + ":" + itemId + ":" + DESC,ITEM_INFO_EXPIRE);
+		}else {
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			selectItemDescByItemId(itemId);
+		}
+		return null;
+	}
+
+	@Override
+	public TbItemParamItem selectTbItemParamItemByItemId(Long itemId) {
+		//查询缓存
+		TbItemParamItem tbItemParamItem = (TbItemParamItem) redisClient.get(ITEM_INFO + ":" + itemId + ":"+ PARAM);
+		if(tbItemParamItem!=null){
+			return tbItemParamItem;
+		}
+
+		if (redisClient.setnx(SETNX_PARAM_LOCK_KEY+":"+itemId,itemId,30L)){
+			TbItemParamItemExample example = new TbItemParamItemExample();
+			TbItemParamItemExample.Criteria criteria = example.createCriteria();
+			criteria.andItemIdEqualTo(itemId);
+			List<TbItemParamItem> tbItemParamItemList = tbItemParamItemMapper.selectByExampleWithBLOBs(example);
+			redisClient.del(SETNX_PARAM_LOCK_KEY+":"+itemId);
+			if(tbItemParamItemList!=null && tbItemParamItemList.size()>0){
+				//把数据保存到缓存
+				redisClient.set(ITEM_INFO + ":" + itemId + ":"+ PARAM,tbItemParamItemList.get(0));
+				//设置缓存的有效期
+				redisClient.expire(ITEM_INFO + ":" + itemId + ":"+ PARAM,ITEM_INFO_EXPIRE);
+				return tbItemParamItemList.get(0);
+			}
+			redisClient.set(ITEM_INFO + ":" + itemId + ":"+ PARAM,null);
+			redisClient.expire(ITEM_INFO + ":" + itemId + ":"+ PARAM,ITEM_INFO_EXPIRE);
+		}else {
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			selectTbItemParamItemByItemId(itemId);
+		}
+		return null;
 	}
 
 	private List<?> getCatList(Long parentId){

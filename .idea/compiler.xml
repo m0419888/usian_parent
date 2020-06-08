@@ -10,6 +10,7 @@
         <module name="usian_content_service" />
         <module name="common_mapper" />
         <module name="common_pojo" />
+        <module name="usian_detail_web" />
         <module name="common_redis" />
         <module name="usian_search_service" />
         <module name="usian_portal_web" />
@@ -35,6 +36,7 @@
       <module name="usian_content_feign" options="-parameters" />
       <module name="usian_content_service" options="-parameters" />
       <module name="usian_content_web" options="-parameters" />
+      <module name="usian_detail_web" options="-parameters" />
       <module name="usian_item_feign" options="-parameters" />
       <module name="usian_item_service" options="-parameters" />
       <module name="usian_item_web" options="-parameters" />

@@ -1,8 +1,6 @@
 package com.usian.feign;
 
-import com.usian.pojo.TbItem;
-import com.usian.pojo.TbItemCat;
-import com.usian.pojo.TbItemParam;
+import com.usian.pojo.*;
 import com.usian.utils.CatNode;
 import com.usian.utils.CatResult;
 import com.usian.utils.ItemAll;
@@ -52,4 +50,10 @@ public interface ItemServiceFeignClient {
 
     @RequestMapping("/service/item/selectItemCategoryAll")
     CatResult selectItemCategoryAll();
+
+    @RequestMapping("/service/item/selectItemDescByItemId")
+    TbItemDesc selectItemDescByItemId(@RequestParam Long itemId);
+
+    @RequestMapping("/service/item/selectTbItemParamItemByItemId")
+    TbItemParamItem selectTbItemParamItemByItemId(@RequestParam Long itemId);
 }
