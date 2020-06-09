@@ -20,5 +20,8 @@
     <file url="file://$PROJECT_DIR$/usian_search_service/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/usian_search_web/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/usian_search_web/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_sso_feign/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_sso_service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_sso_web/src/main/java" charset="UTF-8" />
   </component>
 </project>
