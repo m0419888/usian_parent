@@ -6,6 +6,9 @@
     <file url="file://$PROJECT_DIR$/common_pojo/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/common_redis/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/common_utils/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_cart_feign/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_cart_service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/usian_cart_web/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/usian_content_feign/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/usian_content_service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/usian_content_web/src/main/java" charset="UTF-8" />
